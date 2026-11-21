@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PBB Collab 3.0 — Live</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:#000;color:#e7e7ea;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden}
+body{display:flex;flex-direction:column;-webkit-tap-highlight-color:transparent}
+header{height:48px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid #1c1c1f;background:#050505}
+.dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:pulse 1.1s infinite;flex:0 0 auto}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.brand{font-weight:800;letter-spacing:.1em;font-size:13px;white-space:nowrap}
+.sub{color:#5b5b63;font-size:11px;white-space:nowrap}
+.spacer{flex:1}
+.pill{border:1px solid #26262b;background:#0d0d10;color:#c9c9d0;border-radius:999px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap}
+.pill.on{background:#fff;color:#000;border-color:#fff}
+main{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:62% 38%;gap:4px;padding:4px}
+.tile{position:relative;overflow:hidden;background:#080808;border:1px solid #151518;border-radius:4px;min-width:0;min-height:0}
+.tile.main{grid-column:1/-1}
+video{width:100%;height:100%;display:block;object-fit:cover;background:#000}
+.lbl{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#fff;text-shadow:0 1px 4px #000;pointer-events:none}
+.lbl .d{width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e}
+.ov{position:absolute;inset:0;display:grid;place-items:center;background:#050505;color:#777;font-size:11px;letter-spacing:.1em;text-align:center;padding:10px;z-index:3}
+.ov.hide{display:none}
+.spin{width:18px;height:18px;border:2px solid #333;border-top-color:#fff;border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+footer{flex:0 0 auto;display:flex;justify-content:center;gap:4px;padding:6px;border-top:1px solid #151518;background:#050505}
+.fbtn{background:#0d0d10;border:1px solid #26262b;color:#9a9aa2;border-radius:999px;padding:8px 12px;font-size:11px;cursor:pointer;font-family:inherit;min-width:44px}
+.fbtn.on{background:#fff;color:#000;border-color:#fff}
+@media(max-width:700px){.sub{display:none}main{grid-template-rows:55% 45%}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/shaka-player@4.12.19/dist/shaka-player.compiled.min.js"></script>
+</head><body>
+<header>
+ <span class="dot"></span><span class="brand">PBB COLLAB 3.0</span><span class="sub">/ CCTV LIVE</span>
+ <span class="spacer"></span>
+ <button class="pill" id="fit">FIT: COVER</button>
+ <button class="pill" id="audio">AUDIO: OFF</button>
+ <button class="pill" id="fs">⛶</button>
+</header>
+<main id="grid"></main>
+<footer>
+ <button class="fbtn" data-cam="all">MAIN</button>
+ <button class="fbtn" data-cam="din">DINING</button>
+ <button class="fbtn" data-cam="ext">EXTERNAL</button>
+ <button class="fbtn on" data-cam="grid">GRID</button>
+</footer>
+<script>
+'use strict';
+const AK='https://absp-live.akamaized.net';
+const CAM={
+ all:{name:'ALL ACCESS',p:'/dash/live/2099522/pbbcollab30allaccesslivestream/',sn:1795099662,ast:'2026-11-19T14:41:09.096Z',kid:'b75e0a8315d0499b834c00a3d5b91935',key:'39876c3c4f32a11dee56078febbb67dd'},
+ din:{name:'DINING AREA',p:'/dash/live/2099522/pbbcollab30allaccesslivestream-diningarea/',sn:1795099938,ast:'2026-11-19T14:46:20.172Z',kid:'ea6588d030c94ca89925ac0c49974430',key:'3e6de4afee1eff8e14f9506b76ac9ee6'},
+ ext:{name:'EXTERNAL DEN',p:'/dash/live/2099522/pbbcollab30allaccesslivestream-externalden/',sn:1795100062,ast:'2026-11-19T14:49:30.923Z',kid:'b750a40736a24e60b5a4f256208b92c5',key:'af07292597f692726dcac2bd297ddf8e'}
+};
+function psshOf(hex){
+ const k=String(hex||'').replace(/[^0-9a-f]/gi,'').toLowerCase();
+ if(k.length!==32)return '';
+ const b=new Uint8Array(52),v=new DataView(b.buffer);
+ v.setUint32(0,52,false);b.set([112,115,115,104],4);v.setUint32(8,0x1000000,false);
+ b.set([16,119,239,236,192,178,77,2,172,227,60,30,82,226,251,75],12);v.setUint32(28,1,false);
+ for(let i=0;i<16;i++)b[32+i]=parseInt(k.slice(2*i,2*i+2),16);
+ v.setUint32(48,0,false);let s='';for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);
+ return btoa(s);
+}
+function manifestOf(id){
+ const c=CAM[id];if(!c)return null;
+ const base=AK+c.p,now=new Date().toISOString(),pssh=psshOf(c.key.split(':')[0]);
+ const K=c.kid.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,'$1-$2-$3-$4-$5');
+ const cp='<ContentProtection cenc:default_KID="'+K+'" schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>'
+  +'<ContentProtection schemeIdUri="urn:uuid:1077efec-c0b2-4d02-ace3-3c1e52e2fb4b"><cenc:pssh xmlns:cenc="urn:mpeg:cenc:2013">'+pssh+'</cenc:pssh></ContentProtection>'
+  +'<ContentProtection schemeIdUri="urn:uuid:e2719d58-a985-b3c9-781a-b030af78d30e" value="ClearKey1.0"/>';
+ const t=(h,w,bw,codec,pre)=>'<Representation id="'+h+'" width="'+w+'" height="'+h+'" bandwidth="'+bw+'" codecs="'+codec+'"><SegmentTemplate timescale="90000" duration="360360" startNumber="'+c.sn+'" media="'+base+pre+'$Number$.mp4" initialization="'+base+pre+'init.mp4"/></Representation>';
+ const reps=[t(1080,1920,4000000,'avc1.4d4028','manifest_1080p_'),t(720,1280,2000000,'avc1.4d401f','manifest_720p_'),t(360,640,1000000,'avc1.4d401e','manifest_360p_'),t(180,320,500000,'avc1.4d400d','manifest_180p_')].join('');
+ const xml='<?xml version="1.0" encoding="UTF-8"?><MPD xmlns:cenc="urn:mpeg:cenc:2013" type="dynamic" publishTime="'+now+'" minimumUpdatePeriod="PT8S" availabilityStartTime="'+c.ast+'" minBufferTime="PT2S" suggestedPresentationDelay="PT8S" timeShiftBufferDepth="PT300S" profiles="urn:mpeg:dash:profile:isoff-live:2011"><UTCTiming schemeIdUri="urn:mpeg:dash:utc:direct:2014" value="'+now+'"/><Period start="PT0S" id="1"><AdaptationSet mimeType="video/mp4" frameRate="30000/1001" segmentAlignment="true" startWithSAP="1">'+cp+reps+'</AdaptationSet><AdaptationSet mimeType="audio/mp4" segmentAlignment="0" startWithSAP="1">'+cp+'<SegmentTemplate timescale="48000" media="'+base+'manifest_audio_$Number$.mp4" initialization="'+base+'manifest_audio_init.mp4" duration="192192" startNumber="'+c.sn+'"/><Representation id="5" bandwidth="96000" audioSamplingRate="48000" codecs="mp4a.40.2"/></AdaptationSet></Period></MPD>';
+ return {url:'data:application/dash+xml;charset=utf-8;base64,'+btoa(unescape(encodeURIComponent(xml))),kid:c.kid.replace(/-/g,''),key:c.key.split(':')[1]};
+}
+const grid=document.getElementById('grid');
+let players=[],mode='grid';
+function makeTile(id){
+ const d=document.createElement('div');d.className='tile';d.dataset.cam=id;
+ d.innerHTML='<video playsinline autoplay muted></video><div class="lbl"><span class="d"></span>'+CAM[id].name+'</div><div class="ov"><div><div class="spin"></div>CONNECTING FEED…</div></div>';
+ grid.appendChild(d);return d;
+}
+function setLayout(){
+ grid.style.gridTemplateColumns=mode==='grid'?'1fr 1fr':'1fr';
+ grid.style.gridTemplateRows=mode==='grid'?'62% 38%':'1fr';
+ [...grid.children].forEach((el,i)=>{
+  el.className='tile'+(mode!=='grid'&&i===0?' main':'');
+  el.style.display=mode==='grid'||i===0?'block':'none';
+ });
+}
+async function startTile(id){
+ const d=grid.querySelector('[data-cam="'+id+'"]');if(!d)return;
+ const v=d.querySelector('video'),ov=d.querySelector('.ov');
+ if(!window.shaka||!shaka.Player){ov.innerHTML='player failed';return;}
+ try{
+  const m=manifestOf(id);
+  const p=new shaka.Player();players.push(p);await p.attach(v);
+  const ck={};ck[m.kid]=m.key;ck[m.kid.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,'$1-$2-$3-$4-$5')]=m.key;
+  p.configure({drm:{preferredKeySystems:['org.w3.clearkey'],clearKeys:ck},streaming:{bufferingGoal:6,rebufferingGoal:1,bufferBehind:8,segmentPrefetchLimit:1,retryParameters:{maxAttempts:6,baseDelay:400,backoffFactor:1.5}},abr:{enabled:true,defaultBandwidthEstimate:innerWidth<900?700000:6000000,restrictions:{maxHeight:innerWidth<900?480:1080}}});
+  p.addEventListener('error',e=>{const c=e.detail&&e.detail.code;ov.classList.remove('hide');ov.innerHTML='reconnecting… ('+(c||'?')+')';retry(id);});
+  await p.load(m.url);await v.play().catch(()=>{});
+  ov.classList.add('hide');
+ }catch(e){ov.classList.remove('hide');ov.innerHTML='retrying…';retry(id);}
+}
+const retryTimers={};
+function retry(id){if(retryTimers[id])return;retryTimers[id]=setTimeout(()=>{delete retryTimers[id];const d=grid.querySelector('[data-cam="'+id+'"]');if(d){const p=players.find(x=>x.getConfiguration&&x.getMediaElement&&x.getMediaElement()===d.querySelector('video'));if(p)p.destroy().catch(()=>{});startTile(id);}},4000);}
+function startAll(){players.forEach(p=>{try{p.destroy();}catch(e){}});players=[];grid.innerHTML='';
+ const ids=mode==='grid'?['all','din','ext']:['all'];
+ ids.forEach(id=>makeTile(id));setLayout();ids.forEach(id=>startTile(id));}
+document.querySelectorAll('.fbtn').forEach(b=>b.onclick=()=>{document.querySelectorAll('.fbtn').forEach(x=>x.classList.remove('on'));b.classList.add('on');mode=b.dataset.cam;startAll();});
+document.getElementById('fit').onclick=e=>{const cover=grid.dataset.fit!=='contain';grid.dataset.fit=cover?'contain':'cover';e.target.textContent='FIT: '+(cover?'CONTAIN':'COVER');[...grid.querySelectorAll('video')].forEach(v=>v.style.objectFit=cover?'contain':'cover');};
+document.getElementById('audio').onclick=e=>{const on=grid.dataset.audio==='on';grid.dataset.audio=on?'off':'on';e.target.textContent='AUDIO: '+(on?'OFF':'ON');[...grid.querySelectorAll('video')].forEach(v=>{v.muted=on;});};
+document.getElementById('fs').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{});};
+window.addEventListener('resize',()=>{players.forEach(p=>{try{p.configure({abr:{restrictions:{maxHeight:innerWidth<900?480:1080}}});}catch(e){}});});
+if(window.shaka&&shaka.polyfill)shaka.polyfill.installAll();
+startAll();
+</script>
+</body></html>
